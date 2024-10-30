@@ -192,10 +192,112 @@ class RectangleContainer extends StatefulWidget {
 
 class _RectangleContainerState extends State<RectangleContainer> {
   bool volumeBool = true;
+  String nextPrayerTime = "";
+  String nextPrayerName = "";
+  String remainingTime = "";
+  Timer? _timer;
+
   void volumeFunc() {
     setState(() {
       volumeBool = !volumeBool;
     });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchPrayerTimes();
+    // Update every minute
+    _timer = Timer.periodic(Duration(minutes: 1), (timer) {
+      _fetchPrayerTimes();
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String _getTimeRemaining(DateTime nextPrayer) {
+    DateTime now = DateTime.now();
+    Duration difference = nextPrayer.difference(now);
+    int hours = difference.inHours;
+    int minutes = difference.inMinutes % 60;
+
+    if (hours > 0) {
+      return "${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')} to $nextPrayerName";
+    } else {
+      return "${minutes.toString().padLeft(2, '0')} minutes to $nextPrayerName";
+    }
+  }
+
+  Future<void> _fetchPrayerTimes() async {
+    try {
+      String apiUrl =
+          "https://api.aladhan.com/v1/timingsByAddress/present?address=kokand";
+      Response response = await get(Uri.parse(apiUrl));
+
+      if (!mounted) return;
+
+      var timeData = jsonDecode(response.body);
+      var timings = timeData["data"]["timings"];
+
+      // Map all prayer times
+      Map<String, DateTime> prayerTimes = {
+        'Fajr': _parseTime(timings['Fajr']),
+        'Sunrise': _parseTime(timings['Sunrise']),
+        'Dhuhr': _parseTime(timings['Dhuhr']),
+        'Asr': _parseTime(timings['Asr']),
+        'Maghrib': _parseTime(timings['Maghrib']),
+        'Isha': _parseTime(timings['Isha']),
+      };
+
+      DateTime now = DateTime.now();
+      var nextPrayer = _findNextPrayer(prayerTimes, now);
+
+      setState(() {
+        if (nextPrayer != null) {
+          nextPrayerName = nextPrayer.key;
+          nextPrayerTime = DateFormat('HH:mm').format(nextPrayer.value);
+          remainingTime = _getTimeRemaining(nextPrayer.value);
+        }
+      });
+    } catch (e) {
+      print('Error fetching prayer times: $e');
+    }
+  }
+
+  DateTime _parseTime(String timeStr) {
+    DateTime now = DateTime.now();
+    List<String> parts = timeStr.split(':');
+    return DateTime(
+        now.year, now.month, now.day, int.parse(parts[0]), int.parse(parts[1]));
+  }
+
+  MapEntry<String, DateTime>? _findNextPrayer(
+      Map<String, DateTime> prayerTimes, DateTime now) {
+    MapEntry<String, DateTime>? nextPrayer;
+
+    for (var entry in prayerTimes.entries) {
+      if (entry.value.isAfter(now)) {
+        if (nextPrayer == null || entry.value.isBefore(nextPrayer.value)) {
+          nextPrayer = entry;
+        }
+      }
+    }
+
+    // Agar bugun boshqa namoz qolmagan bo'lsa, ertangi Fajrni ko'rsatish
+    if (nextPrayer == null) {
+      var tomorrow = DateTime.now().add(Duration(days: 1));
+      var fajrTime = prayerTimes['Fajr']!;
+      nextPrayer = MapEntry(
+          'Fajr',
+          DateTime(tomorrow.year, tomorrow.month, tomorrow.day, fajrTime.hour,
+              fajrTime.minute));
+    }
+
+    return nextPrayer;
   }
 
   @override
@@ -259,7 +361,7 @@ class _RectangleContainerState extends State<RectangleContainer> {
               top: 18,
               right: 20,
               child: Text(
-                "01:024:06 to Duhr",
+                remainingTime,
                 style: TextStyle(
                     color: Colors.white,
                     fontSize: 15,
@@ -270,7 +372,7 @@ class _RectangleContainerState extends State<RectangleContainer> {
               top: 53,
               left: 20,
               child: Text(
-                "Mon, 10 Aug 2024",
+                DateFormat('EEE, d MMM yyyy').format(DateTime.now()),
                 style: TextStyle(color: Colors.white, fontSize: 15),
               ),
             ),
@@ -278,7 +380,7 @@ class _RectangleContainerState extends State<RectangleContainer> {
               top: 75,
               left: 18,
               child: Text(
-                "12:59",
+                nextPrayerTime,
                 style: TextStyle(
                     color: Colors.white,
                     fontSize: 50,

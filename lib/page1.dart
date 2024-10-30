@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 
 class Page1 extends StatefulWidget {
   const Page1({super.key});
@@ -63,8 +63,8 @@ class _Page1State extends State<Page1> {
                       onTap: () async {
                         const String url =
                             'https://www.youtube.com/live/G0PC9JDC-2Y?si=3z2S4nAjQwUCdjmj'; // Replace with your YouTube link
-                        if (await canLaunch(url)) {
-                          await launch(url);
+                        if (await canLaunchUrlString(url)) {
+                          await launchUrlString(url);
                         } else {
                           throw 'Could not launch $url';
                         }
@@ -193,19 +193,64 @@ class __4in1RectangleState extends State<_4in1Rectangle> {
   String asr = "";
   String maghrib = "";
   String isha = "";
+  String currentPrayer = "";
+  String currentPrayerTime = "";
+
+  DateTime _parseTime(String timeStr) {
+    DateTime now = DateTime.now();
+    List<String> parts = timeStr.split(':');
+    return DateTime(
+        now.year, now.month, now.day, int.parse(parts[0]), int.parse(parts[1]));
+  }
+
+  String _findCurrentPrayer(Map<String, DateTime> prayerTimes) {
+    DateTime now = DateTime.now();
+
+    if (now.isBefore(prayerTimes['Fajr']!)) {
+      return 'Isha';
+    } else if (now.isBefore(prayerTimes['Sunrise']!)) {
+      return 'Fajr';
+    } else if (now.isBefore(prayerTimes['Dhuhr']!)) {
+      return 'Sunrise';
+    } else if (now.isBefore(prayerTimes['Asr']!)) {
+      return 'Dhuhr';
+    } else if (now.isBefore(prayerTimes['Maghrib']!)) {
+      return 'Asr';
+    } else if (now.isBefore(prayerTimes['Isha']!)) {
+      return 'Maghrib';
+    } else {
+      return 'Isha';
+    }
+  }
 
   void apiFunc() async {
     String apiUrl =
         "https://api.aladhan.com/v1/timingsByAddress/present?address=kokand";
     Response response = await get(Uri.parse(apiUrl));
     var timeData = jsonDecode(response.body);
+    var timings = timeData["data"]["timings"];
+
+    // Create prayer times map
+    Map<String, DateTime> prayerTimes = {
+      'Fajr': _parseTime(timings['Fajr']),
+      'Sunrise': _parseTime(timings['Sunrise']),
+      'Dhuhr': _parseTime(timings['Dhuhr']),
+      'Asr': _parseTime(timings['Asr']),
+      'Maghrib': _parseTime(timings['Maghrib']),
+      'Isha': _parseTime(timings['Isha']),
+    };
+
     setState(() {
-      fajr = timeData["data"]["timings"]["Fajr"];
-      sunrise = timeData["data"]["timings"]["Sunrise"];
-      dhuhr = timeData["data"]["timings"]["Dhuhr"];
-      asr = timeData["data"]["timings"]["Asr"];
-      maghrib = timeData["data"]["timings"]["Maghrib"];
-      isha = timeData["data"]["timings"]["Isha"];
+      fajr = timings["Fajr"];
+      sunrise = timings["Sunrise"];
+      dhuhr = timings["Dhuhr"];
+      asr = timings["Asr"];
+      maghrib = timings["Maghrib"];
+      isha = timings["Isha"];
+
+      // Find current prayer
+      currentPrayer = _findCurrentPrayer(prayerTimes);
+      currentPrayerTime = timings[currentPrayer];
     });
   }
 
@@ -243,7 +288,6 @@ class __4in1RectangleState extends State<_4in1Rectangle> {
               child: Container(
                 height: 60,
                 width: double.infinity,
-                // color: Colors.red,
                 child: Row(
                   children: [
                     Column(
@@ -258,7 +302,7 @@ class __4in1RectangleState extends State<_4in1Rectangle> {
                               size: 17,
                             ),
                             Text(
-                              "  Fajr time",
+                              "  $currentPrayer time",
                               style: TextStyle(
                                   color: Colors.grey,
                                   fontWeight: FontWeight.w500,
@@ -267,7 +311,7 @@ class __4in1RectangleState extends State<_4in1Rectangle> {
                           ],
                         ),
                         Text(
-                          fajr,
+                          currentPrayerTime,
                           style: TextStyle(
                               fontWeight: FontWeight.w600, fontSize: 17),
                         ),
